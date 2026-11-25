@@ -27,6 +27,9 @@ app:
     respawn-seconds: 300
   pvp:
     battle-cooldown-seconds: 20
+  wx:
+    # 测试里没有真实 AppSecret，只验证平台注入 X-WX-OPENID 的分支
+    trust-openid-header: true
 
 logging:
   level:

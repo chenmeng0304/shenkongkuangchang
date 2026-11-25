@@ -86,6 +86,27 @@ export const DEFAULT_API_BASE = 'https://<云托管服务域名>';  // 不要带
 云托管默认给的是 **HTTPS 域名**，正式版小游戏还需要在小程序后台
 「开发设置 → 服务器域名」把该域名加进 `request 合法域名`。
 
+## 二、客户端怎么调（wx.cloud.callContainer）
+
+小游戏端**优先走云托管**，不需要域名白名单、不需要备案：
+
+```js
+wx.cloud.init({ env: 'prod-d9g6iiulv5b41d013', traceUser: false });
+
+wx.cloud.callContainer({
+  config: { env: 'prod-d9g6iiulv5b41d013' },
+  path: '/api/health',                    // 后端路径，必须带 /api 前缀
+  header: { 'X-WX-SERVICE': 'springboot-ou70' },
+  method: 'GET',
+});
+```
+
+- `env`：云开发环境 ID（控制台 → 云开发 → 设置）
+- `X-WX-SERVICE`：**云托管服务名称**（控制台 → 服务列表里那串英文名，这里假设是 `springboot-ou70`）
+- 云托管服务可以**关闭公网访问**，`callContainer` 照样能调通（走内网），更安全
+- 客户端代码里这两个值在 `D:\wxdeepmine\config.js` 的 `CONFIG.CLOUD`，改完重新编译小游戏即可
+- 云调用失败会自动降级到 `wx.request` 的 http 备用通道
+
 ## 三、注意事项
 
 - **实例数必须 ≥ 1**：世界 Boss 靠服务内的 `@Scheduled` 每天轮换，实例缩容到 0 就停摆（`minNum: 1`）。
@@ -118,3 +139,28 @@ $env:DB_PASSWORD="deepmine123"
 | GET | `/api/pvp/players` · `/api/pvp/players/{id}` | 竞技场列表 / 查看对手装备 |
 | POST | `/api/pvp/battle` · GET `/api/pvp/history` | 对战 / 战绩 |
 | GET | `/api/public/leaderboard?type=power\|facilities\|rating\|boss` | 排行榜 |
+
+## 六、微信登录
+
+客户端不再用账号密码，改成 **wx.login() → 后端换 openid → 发 JWT**：
+
+```
+小游戏 wx.login() → code
+   ↓ POST /api/auth/wx { code }
+后端：code2session 换 openid（或直接读云托管注入的 X-WX-OPENID）
+   ↓
+按 openid 找账号，没有就自动建一个「矿工XXXX」→ 返回 JWT
+```
+
+| 环境变量 | 说明 |
+| --- | --- |
+| `WX_APPID` | 小游戏 AppID（走 code 校验时必填） |
+| `WX_SECRET` | 小游戏 AppSecret（同上） |
+| `WX_TRUST_OPENID` | 云托管填 `true`：直接信任平台注入的 `X-WX-OPENID`，**不用 AppSecret** |
+
+> 云托管部署时 `container.config.json` 已经把 `WX_TRUST_OPENID` 设成 `true`，
+> 所以只要通过 `wx.cloud.callContainer` 调用，登录就是开箱即用的。
+> 自建服务器（`wx.request`）没有平台注入的头，必须配 `WX_APPID` / `WX_SECRET`。
+
+数据库：`V5__wx_login.sql` 给 `users` 表加了 `openid`（唯一索引），密码字段改为可空；
+老账号（账号密码注册的）不受影响，只是不能再用来登录新客户端。

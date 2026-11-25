@@ -19,7 +19,8 @@
 		"PORT": "80",
 		"TZ": "Asia/Shanghai",
 		"BOSS_PERIOD": "86400",
-		"PVP_COOLDOWN": "10"
+		"PVP_COOLDOWN": "10",
+		"WX_TRUST_OPENID": "true"
 	},
 	"customLogs": "stdout",
 	"dataBaseName": "deepmine",

@@ -45,6 +45,12 @@ app:
     period-seconds: ${BOSS_PERIOD:86400}
   pvp:
     battle-cooldown-seconds: ${PVP_COOLDOWN:10}
+  # 微信登录：小程序/小游戏的 AppID 与 AppSecret（云托管环境变量里填）
+  wx:
+    appid: ${WX_APPID:}
+    secret: ${WX_SECRET:}
+    # 云托管：信任平台注入的 X-WX-OPENID（自建服务器保持 false，防止伪造请求头）
+    trust-openid-header: ${WX_TRUST_OPENID:false}
 
 logging:
   level:

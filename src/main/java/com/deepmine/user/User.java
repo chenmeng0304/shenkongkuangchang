@@ -11,10 +11,15 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** 微信 openid（微信登录的账号靠它识别；账号密码登录的老账号为空） */
+    @Column(name = "openid", unique = true, length = 64)
+    private String openid;
+
     @Column(nullable = false, unique = true, length = 32)
     private String username;
 
-    @Column(name = "password_hash", nullable = false, length = 100)
+    /** 密码哈希（微信登录的账号为 null） */
+    @Column(name = "password_hash", length = 100)
     private String passwordHash;
 
     @Column(name = "created_at", nullable = false)
@@ -29,6 +34,14 @@ public class User {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public String getOpenid() {
+        return openid;
+    }
+
+    public void setOpenid(String openid) {
+        this.openid = openid;
     }
 
     public String getUsername() {

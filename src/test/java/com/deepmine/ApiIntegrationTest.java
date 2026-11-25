@@ -189,6 +189,34 @@ class ApiIntegrationTest {
         ResponseEntity<Map> health = rest.getForEntity("/api/health", Map.class);
         assertThat(health.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(health.getBody().get("ok")).isEqualTo(true);
+
+        // 10. 微信登录：云托管会注入 X-WX-OPENID，没配 AppSecret 也能建号
+        HttpHeaders wxHeaders = new HttpHeaders();
+        wxHeaders.setContentType(MediaType.APPLICATION_JSON);
+        wxHeaders.set("X-WX-OPENID", "test-openid-0001");
+        ResponseEntity<Map> wxLogin = rest.exchange("/api/auth/wx", HttpMethod.POST,
+                new HttpEntity<>(Map.of(), wxHeaders), Map.class);
+        assertThat(wxLogin.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(wxLogin.getBody()).containsKeys("token", "userId", "username");
+        String wxToken = (String) wxLogin.getBody().get("token");
+        long wxUserId = toLong(wxLogin.getBody().get("userId"));
+        assertThat(wxToken).isNotBlank();
+
+        // 同一个 openid 再登一次 → 还是同一个人
+        ResponseEntity<Map> wxAgain = rest.exchange("/api/auth/wx", HttpMethod.POST,
+                new HttpEntity<>(Map.of(), wxHeaders), Map.class);
+        assertThat(wxAgain.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(toLong(wxAgain.getBody().get("userId"))).isEqualTo(wxUserId);
+
+        // 微信账号的档案可以用 token 正常访问
+        ResponseEntity<Map> wxMe = exchange("/api/me", HttpMethod.GET, null, wxToken, Map.class);
+        assertThat(wxMe.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(toLong(wxMe.getBody().get("userId"))).isEqualTo(wxUserId);
+
+        // 既没有 code 也没有平台 openid → 400
+        ResponseEntity<Map> wxNoCode = rest.exchange("/api/auth/wx", HttpMethod.POST,
+                json(Map.of()), Map.class);
+        assertThat(wxNoCode.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     private HttpEntity<Object> json(Object body) {
