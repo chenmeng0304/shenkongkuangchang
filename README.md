@@ -164,3 +164,22 @@ $env:DB_PASSWORD="deepmine123"
 
 数据库：`V5__wx_login.sql` 给 `users` 表加了 `openid`（唯一索引），密码字段改为可空；
 老账号（账号密码注册的）不受影响，只是不能再用来登录新客户端。
+
+### 常见问题：`PKIX path building failed`
+
+容器的 JDK 用的是自己的 `cacerts`，和系统 `/etc/ssl/certs` 不是同一份。镜像里没带对应根证书时，
+访问 `https://api.weixin.qq.com` 会报：
+
+```
+SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException:
+unable to find valid certification path to requested target
+```
+
+`Dockerfile` 已经在构建时把系统根证书导进 JVM 信任库（`keytool -importcert -cacerts`）。
+如果仍然失败（比如出口被代理拦截），可以临时在服务设置里加：
+
+```
+WX_INSECURE_TLS=true
+```
+
+这会只对「用 code 换 openid」这一个请求跳过证书校验（日志会打印警告），用于应急，**修好后请关掉**。

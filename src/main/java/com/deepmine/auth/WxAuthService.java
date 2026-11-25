@@ -29,16 +29,46 @@ public class WxAuthService {
     private final String appid;
     private final String secret;
     private final ObjectMapper objectMapper;
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+    private final boolean insecureTls;
+    private final HttpClient http;
+    private final HttpClient httpInsecure;
 
     public WxAuthService(@Value("${app.wx.appid:}") String appid,
                          @Value("${app.wx.secret:}") String secret,
+                         @Value("${app.wx.insecure-tls:false}") boolean insecureTls,
                          ObjectMapper objectMapper) {
         this.appid = appid == null ? "" : appid.trim();
         this.secret = secret == null ? "" : secret.trim();
         this.objectMapper = objectMapper;
+        this.insecureTls = insecureTls;
+        this.http = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+        this.httpInsecure = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .sslContext(trustAll())
+                .build();
+    }
+
+    /** 兜底：容器里 CA 装不上时的逃生通道（WX_INSECURE_TLS=true 才会用到） */
+    private static javax.net.ssl.SSLContext trustAll() {
+        try {
+            javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
+            ctx.init(null, new javax.net.ssl.TrustManager[]{new javax.net.ssl.X509TrustManager() {
+                public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                }
+
+                public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                }
+
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                    return new java.security.cert.X509Certificate[0];
+                }
+            }}, null);
+            return ctx;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public boolean configured() {
@@ -65,7 +95,21 @@ public class WxAuthService {
                     .timeout(Duration.ofSeconds(8))
                     .GET()
                     .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response;
+            try {
+                response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch (javax.net.ssl.SSLException ssl) {
+                // 证书链问题：容器的 JDK 信任库没带根证书时会出现
+                //   PKIX path building failed: unable to find valid certification path
+                log.warn("[wx] TLS 校验失败（容器缺根证书？）: {}", ssl.toString());
+                if (!insecureTls) {
+                    throw new ApiException(502,
+                            "服务端无法验证微信服务器证书：请更新后端镜像（已自动导入系统根证书），"
+                                    + "或临时设置环境变量 WX_INSECURE_TLS=true");
+                }
+                log.warn("[wx] 已按 WX_INSECURE_TLS=true 跳过证书校验");
+                response = httpInsecure.send(request, HttpResponse.BodyHandlers.ofString());
+            }
             JsonNode node = objectMapper.readTree(response.body() == null ? "{}" : response.body());
             String openid = node.path("openid").asText("");
             if (!openid.isEmpty()) {

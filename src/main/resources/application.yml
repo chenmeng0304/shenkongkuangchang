@@ -52,6 +52,8 @@ app:
     # 信任平台注入的 X-WX-OPENID（微信云托管默认注入，用它登录就**不需要 AppSecret**）
     # 自建公网服务器建议用环境变量改成 false，避免被伪造请求头
     trust-openid-header: ${WX_TRUST_OPENID:true}
+    # 容器根证书导入失败时的逃生开关（会跳过 TLS 校验，仅调试用）
+    insecure-tls: ${WX_INSECURE_TLS:false}
 
 logging:
   level:

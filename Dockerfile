@@ -28,6 +28,23 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.cloud.tencent.com/g' /etc/apk/repos
     && echo "Asia/Shanghai" > /etc/timezone \
     && rm -rf /var/cache/apk/*
 
+# 把系统根证书导进 JVM 信任库。
+# 不这么做，容器里用 JDK HttpClient 访问 api.weixin.qq.com 会报
+#   PKIX path building failed: unable to find valid certification path
+# （JDK 用的是自己的 cacerts，和系统 /etc/ssl/certs 不是同一份）
+RUN set -e; \
+    CA="$JAVA_HOME/lib/security/cacerts"; \
+    if [ -f /etc/ssl/certs/ca-certificates.crt ]; then \
+      mkdir -p /tmp/ca; \
+      awk 'BEGIN{n=0} /BEGIN CERTIFICATE/{n++} {if(n>0) print > ("/tmp/ca/c" n ".pem")}' \
+        /etc/ssl/certs/ca-certificates.crt; \
+      for f in /tmp/ca/*.pem; do \
+        keytool -importcert -noprompt -cacerts -storepass changeit -file "$f" >/dev/null 2>&1 || true; \
+      done; \
+      rm -rf /tmp/ca; \
+    fi; \
+    keytool -list -cacerts -storepass changeit 2>/dev/null | wc -l || true
+
 WORKDIR /app
 COPY --from=build /app/app.jar /app/app.jar
 
