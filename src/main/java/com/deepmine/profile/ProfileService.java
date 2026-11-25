@@ -64,7 +64,14 @@ public class ProfileService {
 
     @Transactional
     public PlayerProfile getOrCreate(Long userId, String username) {
-        return profiles.findById(userId).orElseGet(() -> {
+        return profiles.findById(userId).map(p -> {
+            // 微信昵称变更后同步显示名（竞技场 / 排行榜都读这一列）
+            if (username != null && !username.isBlank() && !username.equals(p.getUsername())) {
+                p.setUsername(username);
+                return profiles.save(p);
+            }
+            return p;
+        }).orElseGet(() -> {
             PlayerProfile p = new PlayerProfile();
             p.setUserId(userId);
             p.setUsername(username);

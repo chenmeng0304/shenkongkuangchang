@@ -48,7 +48,13 @@ public class PvpService {
 
     @Transactional
     public PvpProfile getOrCreate(Long userId, String username) {
-        return pvpRepository.findById(userId).orElseGet(() -> {
+        return pvpRepository.findById(userId).map(p -> {
+            if (username != null && !username.isBlank() && !username.equals(p.getUsername())) {
+                p.setUsername(username);
+                return pvpRepository.save(p);
+            }
+            return p;
+        }).orElseGet(() -> {
             PvpProfile p = new PvpProfile();
             p.setUserId(userId);
             p.setUsername(username);

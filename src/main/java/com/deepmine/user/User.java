@@ -18,6 +18,14 @@ public class User {
     @Column(nullable = false, unique = true, length = 32)
     private String username;
 
+    /** 微信昵称（授权后才有；为空时展示 username） */
+    @Column(length = 32)
+    private String nickname;
+
+    /** 微信头像地址（授权后才有） */
+    @Column(name = "avatar_url", length = 512)
+    private String avatarUrl;
+
     /** 密码哈希（微信登录的账号为 null） */
     @Column(name = "password_hash", length = 100)
     private String passwordHash;
@@ -52,6 +60,21 @@ public class User {
         this.username = username;
     }
 
+    public String getNickname() {
+        return nickname;
+    }
+
+    public void setNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
     public String getPasswordHash() {
         return passwordHash;
     }

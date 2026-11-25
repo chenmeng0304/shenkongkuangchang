@@ -44,7 +44,7 @@ public class AuthController {
     }
 
     /**
-     * 微信登录：客户端 wx.login() 拿到 code，这里换 openid 并自动建号。
+     * 微信登录：客户端 wx.login() 拿到 code（+ 用户授权的昵称 / 头像），这里换 openid 并自动建号。
      * 云托管会在请求头注入 X-WX-OPENID；trust-openid-header=true（默认）时直接用它，
      * 不需要 AppSecret。自建公网服务器建议用 WX_TRUST_OPENID=false 关掉，只走 code 校验。
      */
@@ -64,13 +64,54 @@ public class AuthController {
             String code = request == null ? null : request.code();
             openid = wxAuth.openidFromCode(code);
         }
+        String nickName = sanitizeNick(request == null ? null : request.nickName());
+        String avatarUrl = sanitizeAvatar(request == null ? null : request.avatarUrl());
+
         String finalOpenid = openid;
-        User user = users.findByOpenid(finalOpenid).orElseGet(() -> createWxUser(finalOpenid));
+        User user = users.findByOpenid(finalOpenid).orElseGet(() -> createWxUser(finalOpenid, nickName));
+        applyWxProfile(user, nickName, avatarUrl);
 
         PlayerProfile profile = profileService.getOrCreate(user.getId(), user.getUsername());
         PvpProfile pvp = pvpService.getOrCreate(user.getId(), user.getUsername());
         String token = jwtService.issue(user.getId(), user.getUsername());
-        return new AuthResponse(token, user.getId(), user.getUsername(), profile.getPower(), pvp.getRating());
+        return new AuthResponse(token, user.getId(), user.getUsername(),
+                profile.getPower(), pvp.getRating(), user.getNickname(), user.getAvatarUrl());
+    }
+
+    /** 昵称去空格、截断；空或「微信用户」这类占位值当没传 */
+    private static String sanitizeNick(String raw) {
+        if (raw == null) return null;
+        String v = raw.trim().replaceAll("[\\p{Cntrl}]", "");
+        if (v.isEmpty() || v.equals("微信用户") || v.equals("WeChat User")) return null;
+        return v.length() > 16 ? v.substring(0, 16) : v;
+    }
+
+    private static String sanitizeAvatar(String raw) {
+        if (raw == null) return null;
+        String v = raw.trim();
+        if (!v.startsWith("http://") && !v.startsWith("https://")) return null;
+        if (v.length() > 500) return null;
+        return v;
+    }
+
+    /** 把拿到的昵称 / 头像写回账号（昵称尽量同步到 username，撞名就只存 nickname） */
+    private void applyWxProfile(User user, String nickName, String avatarUrl) {
+        boolean dirty = false;
+        if (nickName != null && !nickName.equals(user.getNickname())) {
+            user.setNickname(nickName);
+            dirty = true;
+        }
+        if (avatarUrl != null && !avatarUrl.equals(user.getAvatarUrl())) {
+            user.setAvatarUrl(avatarUrl);
+            dirty = true;
+        }
+        if (nickName != null && !nickName.equals(user.getUsername())
+                && !users.existsByUsername(nickName)) {
+            // 老账号（矿工XXXX）第一次授权后，直接用微信昵称当显示名
+            user.setUsername(nickName);
+            dirty = true;
+        }
+        if (dirty) users.save(user);
     }
 
     /** 诊断用：看看云托管到底注入了哪些 X-WX-* 头（不含敏感值）；?deep=1 会额外做 DNS/TLS 检查 */
@@ -91,8 +132,20 @@ public class AuthController {
         return out;
     }
 
-    /** 新建微信账号：昵称用「矿工 + 4 位数字」，撞名就重试 */
-    private User createWxUser(String openid) {
+    /** 新建微信账号：优先用微信昵称，没有就用「矿工 + 4 位数字」，撞名就重试 */
+    private User createWxUser(String openid, String nickName) {
+        if (nickName != null && !users.existsByUsername(nickName)) {
+            User named = new User();
+            named.setOpenid(openid);
+            named.setUsername(nickName);
+            named.setNickname(nickName);
+            named.setCreatedAt(LocalDateTime.now());
+            try {
+                return users.save(named);
+            } catch (Exception ignored) {
+                // 并发撞名，落到下面的随机昵称
+            }
+        }
         ThreadLocalRandom random = ThreadLocalRandom.current();
         for (int attempt = 0; attempt < 30; attempt++) {
             String username = "矿工" + (1000 + random.nextInt(9000));
@@ -100,6 +153,7 @@ public class AuthController {
             User user = new User();
             user.setOpenid(openid);
             user.setUsername(username);
+            user.setNickname(nickName);
             user.setCreatedAt(LocalDateTime.now());
             try {
                 return users.save(user);
@@ -127,7 +181,8 @@ public class AuthController {
         PlayerProfile profile = profileService.getOrCreate(user.getId(), username);
         PvpProfile pvp = pvpService.getOrCreate(user.getId(), username);
         String token = jwtService.issue(user.getId(), username);
-        return new AuthResponse(token, user.getId(), username, profile.getPower(), pvp.getRating());
+        return new AuthResponse(token, user.getId(), username, profile.getPower(), pvp.getRating(),
+                user.getNickname(), user.getAvatarUrl());
     }
 
     @PostMapping("/login")
@@ -141,10 +196,11 @@ public class AuthController {
         PlayerProfile profile = profileService.getOrCreate(user.getId(), user.getUsername());
         PvpProfile pvp = pvpService.getOrCreate(user.getId(), user.getUsername());
         String token = jwtService.issue(user.getId(), user.getUsername());
-        return new AuthResponse(token, user.getId(), user.getUsername(), profile.getPower(), pvp.getRating());
+        return new AuthResponse(token, user.getId(), user.getUsername(), profile.getPower(), pvp.getRating(),
+                user.getNickname(), user.getAvatarUrl());
     }
 
-    public record WxLoginRequest(String code) {
+    public record WxLoginRequest(String code, String nickName, String avatarUrl) {
     }
 
     public record AuthRequest(
@@ -156,6 +212,7 @@ public class AuthController {
             String password) {
     }
 
-    public record AuthResponse(String token, Long userId, String username, long power, int rating) {
+    public record AuthResponse(String token, Long userId, String username, long power, int rating,
+                               String nickname, String avatarUrl) {
     }
 }

@@ -194,10 +194,19 @@ class ApiIntegrationTest {
         HttpHeaders wxHeaders = new HttpHeaders();
         wxHeaders.setContentType(MediaType.APPLICATION_JSON);
         wxHeaders.set("X-WX-OPENID", "test-openid-0001");
+        // 带上用户授权的微信昵称 / 头像
+        Map<String, Object> wxBody = Map.of(
+                "code", "",
+                "nickName", "星尘矿工",
+                "avatarUrl", "https://thirdwx.qlogo.cn/mmopen/vi_32/test/132");
         ResponseEntity<Map> wxLogin = rest.exchange("/api/auth/wx", HttpMethod.POST,
-                new HttpEntity<>(Map.of(), wxHeaders), Map.class);
+                new HttpEntity<>(wxBody, wxHeaders), Map.class);
         assertThat(wxLogin.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(wxLogin.getBody()).containsKeys("token", "userId", "username");
+        assertThat(wxLogin.getBody()).containsKeys("token", "userId", "username", "nickname", "avatarUrl");
+        assertThat(wxLogin.getBody().get("nickname")).isEqualTo("星尘矿工");
+        assertThat(wxLogin.getBody().get("avatarUrl")).isEqualTo("https://thirdwx.qlogo.cn/mmopen/vi_32/test/132");
+        // 新号直接用微信昵称当用户名（撞名才会退化成「矿工XXXX」）
+        assertThat(wxLogin.getBody().get("username")).isEqualTo("星尘矿工");
         String wxToken = (String) wxLogin.getBody().get("token");
         long wxUserId = toLong(wxLogin.getBody().get("userId"));
         assertThat(wxToken).isNotBlank();
