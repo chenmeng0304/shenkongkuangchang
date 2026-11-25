@@ -48,7 +48,9 @@ public class WxAuthService {
     /** code → openid，失败抛 ApiException */
     public String openidFromCode(String code) {
         if (!configured()) {
-            throw ApiException.badRequest("服务端未配置微信 AppID / AppSecret（WX_APPID / WX_SECRET）");
+            throw ApiException.badRequest(
+                    "服务端既没收到云托管的 X-WX-OPENID 头，也没配置 WX_APPID / WX_SECRET。"
+                            + "请在云托管「服务设置 → 环境变量」里加 WX_TRUST_OPENID=true，并确认客户端走的是 wx.cloud.callContainer");
         }
         if (code == null || code.isBlank()) {
             throw ApiException.badRequest("缺少登录凭证 code");

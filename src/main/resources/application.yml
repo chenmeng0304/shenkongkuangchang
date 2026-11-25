@@ -49,8 +49,9 @@ app:
   wx:
     appid: ${WX_APPID:}
     secret: ${WX_SECRET:}
-    # 云托管：信任平台注入的 X-WX-OPENID（自建服务器保持 false，防止伪造请求头）
-    trust-openid-header: ${WX_TRUST_OPENID:false}
+    # 信任平台注入的 X-WX-OPENID（微信云托管默认注入，用它登录就**不需要 AppSecret**）
+    # 自建公网服务器建议用环境变量改成 false，避免被伪造请求头
+    trust-openid-header: ${WX_TRUST_OPENID:true}
 
 logging:
   level:
