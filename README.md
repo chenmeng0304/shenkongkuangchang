@@ -1,7 +1,7 @@
 # 深空矿场 · 服务端（微信云托管版）
 
 《深空矿场》小游戏的联机后端：账号 / 存档同步 / 世界 Boss（含基地防线）/ 竞技场 / 排行榜。
-Spring Boot 3.3 + Java 17 + MySQL 8 + Flyway，**已按微信云托管的容器规范改好**。
+Spring Boot 3.3 + Java 17 + MySQL 8 + Flyway，**已按微信云托管的容器规范改好**。aaa
 
 > 本目录是云托管专用工程；原来跑在自建服务器上的版本在 `D:\wxdeepmine-backend`（带 docker-compose 与部署脚本）。
 
