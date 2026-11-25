@@ -1,46 +1,40 @@
-# 二开推荐阅读[如何提高项目构建效率](https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/scene/build/speed.html)
-# 选择构建用基础镜像。如需更换，请到[dockerhub官方仓库](https://hub.docker.com/_/java?tab=tags)自行选择后替换。
-FROM maven:3.6.0-jdk-8-slim as build
+# 微信云托管 · 深空矿场服务端（Spring Boot 3 / Java 17）
+# 文档：https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/basic/guide.html
+#
+# 本地构建：docker build -t deepmine-server .
+# 本地运行：docker run -p 80:80 -e PORT=80 -e MYSQL_ADDRESS=host:3306 deepmine-server
 
-# 指定构建过程中的工作目录
+# ---------- 构建阶段 ----------
+FROM maven:3.9-eclipse-temurin-17 AS build
+
 WORKDIR /app
 
-# 将src目录下所有文件，拷贝到工作目录中src目录下（.gitignore/.dockerignore中文件除外）
-COPY src /app/src
-
-# 将pom.xml文件，拷贝到工作目录下
+# 先只拷 pom / settings，让依赖单独成层：改业务代码时不用重新下载依赖
 COPY settings.xml pom.xml /app/
+RUN mvn -s /app/settings.xml -f /app/pom.xml -q -DskipTests dependency:go-offline || true
 
-# 执行代码编译命令
-# 自定义settings.xml, 选用国内镜像源以提高下载速度
-RUN mvn -s /app/settings.xml -f /app/pom.xml clean package
+# 源码 + 打包（产物统一改名 app.jar，避免版本号变化导致 CMD 失效）
+COPY src /app/src
+RUN mvn -s /app/settings.xml -f /app/pom.xml -q -DskipTests clean package \
+    && cp /app/target/*.jar /app/app.jar
 
-# 选择运行时基础镜像
-FROM alpine:3.13
+# ---------- 运行阶段 ----------
+FROM eclipse-temurin:17-jre-alpine
 
-# 安装依赖包，如需其他依赖包，请到alpine依赖包管理(https://pkgs.alpinelinux.org/packages?name=php8*imagick*&branch=v3.13)查找。
-# 选用国内镜像源以提高下载速度
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tencent.com/g' /etc/apk/repositories \
-    && apk add --update --no-cache openjdk8-jre-base \
-    && rm -f /var/cache/apk/*
+# 国内镜像加速 + 时区 + HTTPS 证书
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.cloud.tencent.com/g' /etc/apk/repositories \
+    && apk add --no-cache ca-certificates tzdata \
+    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && rm -rf /var/cache/apk/*
 
-# 容器默认时区为UTC，如需使用上海时间请启用以下时区设置命令
-# RUN apk add tzdata && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo Asia/Shanghai > /etc/timezone
-
-# 使用 HTTPS 协议访问容器云调用证书安装
-RUN apk add ca-certificates
-
-# 指定运行时的工作目录
 WORKDIR /app
+COPY --from=build /app/app.jar /app/app.jar
 
-# 将构建产物jar包拷贝到运行时目录中
-COPY --from=build /app/target/*.jar .
-
-# 暴露端口
-# 此处端口必须与「服务设置」-「流水线」以及「手动上传代码包」部署时填写的端口一致，否则会部署失败。
+# 云托管「服务设置 → 端口」要填 80，与这里保持一致
 EXPOSE 80
+ENV PORT=80 \
+    TZ=Asia/Shanghai \
+    JAVA_OPTS="-Xms256m -Xmx1024m -XX:+UseG1GC -XX:MaxMetaspaceSize=256m"
 
-# 执行启动命令.
-# 写多行独立的CMD命令是错误写法！只有最后一行CMD命令会被执行，之前的都会被忽略，导致业务报错。
-# 请参考[Docker官方文档之CMD命令](https://docs.docker.com/engine/reference/builder/#cmd)
-CMD ["java", "-jar", "/app/springboot-wxcloudrun-1.0.jar"]
+CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

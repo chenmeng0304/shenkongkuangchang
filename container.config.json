@@ -1,31 +1,29 @@
 {
-	// 本配置文件仅配合模板部署使用，为模板部署的服务生成「服务设置」的初始值。
-	// 模板部署结束后，后续服务发布与本配置文件完全无关，修改「服务设置」请到控制台操作。
-	// 复制模板代码自行开发请忽略本配置文件。
-	
-	"containerPort": 80,                            
-	"minNum": 0,                                    
-	"maxNum": 5,                                   
-	"cpu": 1,                                    	
-	"mem": 2,                                     	
-	"policyType": "cpu",                            
-	"policyThreshold": 50,
+	// 仅「模板部署」时用来生成初始的「服务设置」，代码发布后请以控制台为准。
+	// 关键点：
+	//   1. containerPort 必须与 Dockerfile 的 EXPOSE / PORT 一致（都是 80）
+	//   2. minNum 必须 >= 1：世界 Boss 靠服务内定时器每天轮换，缩容到 0 就会停摆
+	//   3. maxNum 先固定 1：多实例会让定时任务重复执行（目前靠数据库行锁兜底，但没必要冒险）
+	"containerPort": 80,
+	"minNum": 1,
+	"maxNum": 1,
+	"cpu": 1,
+	"mem": 2,
+	"policyType": "cpu",
+	"policyThreshold": 60,
 	"policyDetails": [
-		{
-			"PolicyType": "cpu",
-			"PolicyThreshold": 50
-		},
-		{
-			"PolicyType": "mem",
-			"PolicyThreshold": 50
-		}
+		{ "PolicyType": "cpu", "PolicyThreshold": 60 },
+		{ "PolicyType": "mem", "PolicyThreshold": 70 }
 	],
-	"envParams": {},                                
-	"customLogs": "stdout",                         
-	"dataBaseName":"springboot_demo",               
-	"executeSQLs":[
-		"CREATE DATABASE IF NOT EXISTS springboot_demo;",
-		"USE springboot_demo;",
-		"CREATE TABLE IF NOT EXISTS `Counters` (`id` int(11) NOT NULL AUTO_INCREMENT, `count` int(11) NOT NULL DEFAULT 1, `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`)) ENGINE = InnoDB DEFAULT CHARSET = utf8;"
-	]                                               
+	"envParams": {
+		"PORT": "80",
+		"TZ": "Asia/Shanghai",
+		"BOSS_PERIOD": "86400",
+		"PVP_COOLDOWN": "10"
+	},
+	"customLogs": "stdout",
+	"dataBaseName": "deepmine",
+	"executeSQLs": [
+		"CREATE DATABASE IF NOT EXISTS deepmine DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+	]
 }

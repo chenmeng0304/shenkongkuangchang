@@ -1,17 +1,52 @@
 server:
-  port: 80
-
+  port: ${PORT:8081}
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/css,text/javascript,application/javascript
+  error:
+    include-message: always
 
 spring:
+  application:
+    name: deepmine-server
   datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://${MYSQL_ADDRESS}/${MYSQL_DATABASE:springboot_demo}
-    username: ${MYSQL_USERNAME}
-    password: ${MYSQL_PASSWORD}
-  mvc:
-    view:
-      suffix: .html
-      prefix: /
+    # 微信云托管会自动注入 MYSQL_ADDRESS / MYSQL_USERNAME / MYSQL_PASSWORD；
+    # 自建服务器继续用 DB_URL / DB_USER / DB_PASSWORD（优先级更高）
+    url: ${DB_URL:jdbc:mysql://${MYSQL_ADDRESS:127.0.0.1:3306}/${DB_NAME:deepmine}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8}
+    username: ${DB_USER:${MYSQL_USERNAME:deepmine}}
+    password: ${DB_PASSWORD:${MYSQL_PASSWORD:deepmine123}}
+    hikari:
+      maximum-pool-size: ${DB_POOL:10}
+      connection-timeout: 10000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Shanghai
+        format_sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  jackson:
+    time-zone: Asia/Shanghai
 
-mybatis:
-  mapper-locations: classpath*:mapper/*Mapper.xml
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:deepmine-dev-secret-please-change-in-production-0123456789}
+    ttl-hours: ${APP_JWT_TTL_HOURS:720}
+  static-dir: ${APP_STATIC_DIR:}
+  cors-origins: ${APP_CORS_ORIGINS:http://localhost:*,http://127.0.0.1:*}
+  boss:
+    attack-cooldown-seconds: ${BOSS_COOLDOWN:12}
+    period-seconds: ${BOSS_PERIOD:86400}
+  pvp:
+    battle-cooldown-seconds: ${PVP_COOLDOWN:10}
+
+logging:
+  level:
+    root: INFO
+    com.deepmine: INFO

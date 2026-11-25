@@ -1,0 +1,11 @@
+# 云托管在 Linux 上构建：所有文本统一用 LF，避免 Dockerfile 的续行符被 CRLF 破坏
+* text=auto eol=lf
+
+# Windows 专用脚本保留 CRLF
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制
+*.jar binary
+*.png binary
+*.wav binary

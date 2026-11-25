@@ -1,122 +1,120 @@
-# wxcloudrun-springboot
-[![GitHub license](https://img.shields.io/github/license/WeixinCloud/wxcloudrun-express)](https://github.com/WeixinCloud/wxcloudrun-express)
-![GitHub package.json dependency version (prod)](https://img.shields.io/badge/maven-3.6.0-green)
-![GitHub package.json dependency version (prod)](https://img.shields.io/badge/jdk-11-green)
+# 深空矿场 · 服务端（微信云托管版）
 
-微信云托管 Java Springboot 框架模版，实现简单的计数器读写接口，使用云托管 MySQL 读写、记录计数值。
+《深空矿场》小游戏的联机后端：账号 / 存档同步 / 世界 Boss（含基地防线）/ 竞技场 / 排行榜。
+Spring Boot 3.3 + Java 17 + MySQL 8 + Flyway，**已按微信云托管的容器规范改好**。
 
-![](https://qcloudimg.tencent-cloud.cn/raw/be22992d297d1b9a1a5365e606276781.png)
+> 本目录是云托管专用工程；原来跑在自建服务器上的版本在 `D:\wxdeepmine-backend`（带 docker-compose 与部署脚本）。
 
-
-## 快速开始
-前往 [微信云托管快速开始页面](https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/basic/guide.html)，选择相应语言的模板，根据引导完成部署。
-
-## 本地调试
-下载代码在本地调试，请参考[微信云托管本地调试指南](https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/guide/debug/)。
-
-## 实时开发
-代码变动时，不需要重新构建和启动容器，即可查看变动后的效果。请参考[微信云托管实时开发指南](https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/guide/debug/dev.html)
-
-## Dockerfile最佳实践
-请参考[如何提高项目构建效率](https://developers.weixin.qq.com/miniprogram/dev/wxcloudrun/src/scene/build/speed.html)
-
-## 目录结构说明
-~~~
-.
-├── Dockerfile                      Dockerfile 文件
-├── LICENSE                         LICENSE 文件
-├── README.md                       README 文件
-├── container.config.json           模板部署「服务设置」初始化配置（二开请忽略）
-├── mvnw                            mvnw 文件，处理mevan版本兼容问题
-├── mvnw.cmd                        mvnw.cmd 文件，处理mevan版本兼容问题
-├── pom.xml                         pom.xml文件
-├── settings.xml                    maven 配置文件
-├── springboot-cloudbaserun.iml     项目配置文件
-└── src                             源码目录
-    └── main                        源码主目录
-        ├── java                    业务逻辑目录
-        └── resources               资源文件目录
-~~~
-
-
-## 服务 API 文档
-
-### `GET /api/count`
-
-获取当前计数
-
-#### 请求参数
-
-无
-
-#### 响应结果
-
-- `code`：错误码
-- `data`：当前计数值
-
-##### 响应结果示例
-
-```json
-{
-  "code": 0,
-  "data": 42
-}
-```
-
-#### 调用示例
+## 目录结构
 
 ```
-curl https://<云托管服务域名>/api/count
+skkc/
+├── Dockerfile               多阶段构建：Maven 编译 → JRE 17 运行（EXPOSE 80）
+├── .dockerignore
+├── container.config.json    模板部署用的初始「服务设置」（端口 / 规格 / 环境变量）
+├── settings.xml             Maven 国内镜像（加速构建）
+├── pom.xml                  Spring Boot 3.3.5 / Java 17
+├── mvnw / mvnw.cmd
+└── src/main/
+    ├── java/com/deepmine/   auth / boss / pvp / profile / leaderboard / config …
+    └── resources/
+        ├── application.yml  端口、数据源（自动读云托管注入的 MYSQL_*）
+        └── db/migration/    Flyway 建表脚本 V1~V4（首次启动自动建表）
 ```
 
+## 一、部署到微信云托管
 
+前置：在 [微信云托管控制台](https://cloud.weixin.qq.com/cloudrun) 创建环境，并创建一个 MySQL 实例。
 
-### `POST /api/count`
+1. **把本目录推到 Git 仓库**（当前 remote：`https://github.com/chenmeng0304/shenkongkuangchang.git`）
 
-更新计数，自增或者清零
+   ```bash
+   cd D:\skkc
+   git add -A
+   git commit -m "深空矿场服务端：云托管版"
+   git push origin main
+   ```
 
-#### 请求参数
+2. **新建服务**：控制台 → 服务管理 → 新建服务
+   - 服务名称：`deepmine`
+   - 部署方式：**Git 仓库拉取**（选择上面的仓库与分支）
+   - 构建目录：`/`（Dockerfile 在根目录）
+   - **端口：80**（必须与 Dockerfile 的 `EXPOSE 80` 一致）
 
-- `action`：`string` 类型，枚举值
-  - 等于 `"inc"` 时，表示计数加一
-  - 等于 `"clear"` 时，表示计数重置（清零）
+3. **绑定 MySQL**：服务设置 → 数据库 → 绑定云托管 MySQL
+   - 绑定后平台会自动注入 `MYSQL_ADDRESS` / `MYSQL_USERNAME` / `MYSQL_PASSWORD`
 
-##### 请求参数示例
+4. **建库**：在云托管 MySQL 的「数据库管理」里执行一次
 
+   ```sql
+   CREATE DATABASE IF NOT EXISTS deepmine
+     DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   ```
+
+   （表结构不用手建，服务启动时 Flyway 会自动跑 `db/migration/V1~V4`）
+
+5. **环境变量**（服务设置 → 环境变量）
+
+   | 变量 | 必填 | 说明 |
+   | --- | --- | --- |
+   | `PORT` | 是 | 固定 `80` |
+   | `DB_NAME` | 是 | `deepmine`（数据库名） |
+   | `APP_JWT_SECRET` | **是** | 换成你自己的长随机串，别用默认值 |
+   | `TZ` | 否 | `Asia/Shanghai` |
+   | `BOSS_PERIOD` | 否 | 每期 Boss 秒数，默认 `86400`（每天一轮） |
+   | `PVP_COOLDOWN` | 否 | 竞技场冷却秒数，默认 `10` |
+   | `MYSQL_ADDRESS` 等 | 自动 | 绑定 MySQL 后由平台注入，**不要手填** |
+
+6. **发布**：控制台 → 版本管理 → 部署 → 选择分支 → 构建并发布
+   构建日志里会看到 Maven 打包与 `java -jar /app/app.jar` 启动。
+
+7. **验证**：打开 `https://<你的服务域名>/api/health`，应返回
+
+   ```json
+   {"service":"deepmine-server","ok":true,"time":"..."}
+   ```
+
+## 二、客户端对接
+
+小程序 `D:\wxdeepmine\config.js`：
+
+```js
+export const DEFAULT_API_BASE = 'https://<云托管服务域名>';  // 不要带 /api
 ```
-{
-  "action": "inc"
-}
+
+客户端会自动拼 `/api`，改完重新编译小游戏即可。
+云托管默认给的是 **HTTPS 域名**，正式版小游戏还需要在小程序后台
+「开发设置 → 服务器域名」把该域名加进 `request 合法域名`。
+
+## 三、注意事项
+
+- **实例数必须 ≥ 1**：世界 Boss 靠服务内的 `@Scheduled` 每天轮换，实例缩容到 0 就停摆（`minNum: 1`）。
+- **先别开多实例**：定时任务在每个实例都会跑；虽然轮换逻辑用数据库行锁兜底，但 1 个实例最省心（`maxNum: 1`）。要扩容时告诉我，我把定时任务改成分布式锁。
+- **JWT 密钥**：`APP_JWT_SECRET` 一定要改，否则任何人都能伪造 token。
+- **时区**：容器时区已固定为 `Asia/Shanghai`，Boss 的「每天 0 点」按北京时间算。
+- **数据备份**：云托管 MySQL 控制台可以手动备份/回滚。
+
+## 四、本地开发
+
+```powershell
+# 需要本地 MySQL（默认 127.0.0.1:3306/deepmine）
+$env:DB_URL="jdbc:mysql://127.0.0.1:3306/deepmine?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8"
+$env:DB_USER="deepmine"
+$env:DB_PASSWORD="deepmine123"
+.\mvnw.cmd spring-boot:run
 ```
 
-#### 响应结果
+跑在 `http://127.0.0.1:8081`（本地默认端口），客户端的 `LOCAL_API_BASE` 已指向这里。
 
-- `code`：错误码
-- `data`：当前计数值
+## 五、接口一览
 
-##### 响应结果示例
-
-```json
-{
-  "code": 0,
-  "data": 42
-}
-```
-
-#### 调用示例
-
-```
-curl -X POST -H 'content-type: application/json' -d '{"action": "inc"}' https://<云托管服务域名>/api/count
-```
-
-## 使用注意
-如果不是通过微信云托管控制台部署模板代码，而是自行复制/下载模板代码后，手动新建一个服务并部署，需要在「服务设置」中补全以下环境变量，才可正常使用，否则会引发无法连接数据库，进而导致部署失败。
-- MYSQL_ADDRESS
-- MYSQL_PASSWORD
-- MYSQL_USERNAME
-以上三个变量的值请按实际情况填写。如果使用云托管内MySQL，可以在控制台MySQL页面获取相关信息。
-
-
-## License
-
-[MIT](./LICENSE)
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/health` | 健康检查 |
+| POST | `/api/auth/register` `/api/auth/login` | 注册 / 登录（JWT） |
+| GET | `/api/me` · `/api/me/snapshot` | 档案 / 下载云端存档 |
+| POST | `/api/me/sync` | 上传存档（含装备 / 防线 / 战力） |
+| GET | `/api/boss` · POST `/api/boss/attack` · `/api/boss/claim` | 世界 Boss |
+| GET | `/api/pvp/players` · `/api/pvp/players/{id}` | 竞技场列表 / 查看对手装备 |
+| POST | `/api/pvp/battle` · GET `/api/pvp/history` | 对战 / 战绩 |
+| GET | `/api/public/leaderboard?type=power\|facilities\|rating\|boss` | 排行榜 |

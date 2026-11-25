@@ -1,0 +1,11 @@
+target/
+.git/
+.gitignore
+.idea/
+*.iml
+*.log
+deploy/
+docs/
+container.config.json
+*.md
+!README.md
