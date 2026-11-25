@@ -73,9 +73,11 @@ public class AuthController {
         return new AuthResponse(token, user.getId(), user.getUsername(), profile.getPower(), pvp.getRating());
     }
 
-    /** 诊断用：看看云托管到底注入了哪些 X-WX-* 头（不含敏感值） */
+    /** 诊断用：看看云托管到底注入了哪些 X-WX-* 头（不含敏感值）；?deep=1 会额外做 DNS/TLS 检查 */
     @GetMapping("/wx/probe")
-    public java.util.Map<String, Object> wxProbe(@RequestHeader java.util.Map<String, String> headers) {
+    public java.util.Map<String, Object> wxProbe(
+            @RequestHeader java.util.Map<String, String> headers,
+            @RequestParam(value = "deep", required = false) String deep) {
         java.util.List<String> wxKeys = new java.util.ArrayList<>();
         for (String key : headers.keySet()) {
             if (key != null && key.toLowerCase().startsWith("x-wx")) wxKeys.add(key.toLowerCase());
@@ -85,6 +87,7 @@ public class AuthController {
         out.put("xwxHeaders", wxKeys);
         out.put("trustHeader", trustOpenidHeader);
         out.put("appidConfigured", wxAuth.configured());
+        if ("1".equals(deep)) out.putAll(wxAuth.diagnostics());
         return out;
     }
 

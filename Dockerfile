@@ -19,22 +19,22 @@ RUN mvn -s /app/settings.xml -f /app/pom.xml -q -DskipTests clean package \
     && cp /app/target/*.jar /app/app.jar
 
 # ---------- 运行阶段 ----------
-FROM eclipse-temurin:17-jre-alpine
-
-# 国内镜像加速 + 时区 + HTTPS 证书
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.cloud.tencent.com/g' /etc/apk/repositories \
-    && apk add --no-cache ca-certificates tzdata \
-    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
-    && echo "Asia/Shanghai" > /etc/timezone \
-    && rm -rf /var/cache/apk/*
-
-# 把系统根证书导进 JVM 信任库。
-# 不这么做，容器里用 JDK HttpClient 访问 api.weixin.qq.com 会报
+# 用 Debian 版 Temurin（自带完整 cacerts）。
+# alpine 版曾出现访问 api.weixin.qq.com 报
 #   PKIX path building failed: unable to find valid certification path
-# （JDK 用的是自己的 cacerts，和系统 /etc/ssl/certs 不是同一份）
+FROM eclipse-temurin:17-jre
+
+# 时区 + 系统根证书（Debian 版已自带 ca-certificates，这里确保是最新的）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 再把系统根证书导进 JVM 信任库（双保险：JDK 的 cacerts 和系统 /etc/ssl/certs 不是同一份）
 RUN set -e; \
-    CA="$JAVA_HOME/lib/security/cacerts"; \
-    if [ -f /etc/ssl/certs/ca-certificates.crt ]; then \
+    if [ -f /etc/ssl/certs/ca-certificates.crt ] && command -v keytool >/dev/null 2>&1; then \
       mkdir -p /tmp/ca; \
       awk 'BEGIN{n=0} /BEGIN CERTIFICATE/{n++} {if(n>0) print > ("/tmp/ca/c" n ".pem")}' \
         /etc/ssl/certs/ca-certificates.crt; \
@@ -43,7 +43,7 @@ RUN set -e; \
       done; \
       rm -rf /tmp/ca; \
     fi; \
-    keytool -list -cacerts -storepass changeit 2>/dev/null | wc -l || true
+    echo "JVM 信任库条目数: $(keytool -list -cacerts -storepass changeit 2>/dev/null | grep -c trustedCertEntry || echo 0)"
 
 WORKDIR /app
 COPY --from=build /app/app.jar /app/app.jar

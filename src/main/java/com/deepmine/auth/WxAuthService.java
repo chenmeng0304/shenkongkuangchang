@@ -98,16 +98,16 @@ public class WxAuthService {
             HttpResponse<String> response;
             try {
                 response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            } catch (javax.net.ssl.SSLException ssl) {
+            } catch (java.io.IOException io) {
+                if (!isTlsError(io)) throw io;
                 // 证书链问题：容器的 JDK 信任库没带根证书时会出现
                 //   PKIX path building failed: unable to find valid certification path
-                log.warn("[wx] TLS 校验失败（容器缺根证书？）: {}", ssl.toString());
+                log.warn("[wx] TLS 校验失败（容器缺根证书？）: {}", describe(io));
                 if (!insecureTls) {
                     throw new ApiException(502,
-                            "服务端无法验证微信服务器证书：请更新后端镜像（已自动导入系统根证书），"
-                                    + "或临时设置环境变量 WX_INSECURE_TLS=true");
+                            "服务端无法验证微信服务器证书（严格模式已开启）：请把 WX_INSECURE_TLS 设为 true 让登录自动降级");
                 }
-                log.warn("[wx] 已按 WX_INSECURE_TLS=true 跳过证书校验");
+                log.warn("[wx] 证书校验失败，已自动降级重试（WX_INSECURE_TLS=false 可关闭）");
                 response = httpInsecure.send(request, HttpResponse.BodyHandlers.ofString());
             }
             JsonNode node = objectMapper.readTree(response.body() == null ? "{}" : response.body());
@@ -128,9 +128,73 @@ public class WxAuthService {
             Thread.currentThread().interrupt();
             throw new ApiException(502, "微信登录被中断");
         } catch (Exception e) {
-            log.warn("[wx] code2session 异常: {}", e.toString());
-            throw new ApiException(502, "微信服务器暂时不可用，请稍后重试");
+            log.warn("[wx] code2session 异常: {}", describe(e));
+            throw new ApiException(502,
+                    "微信服务器暂时不可用（" + shortReason(e) + "），可访问 /api/auth/wx/probe?deep=1 查看诊断");
         }
+    }
+
+    /* ---------------- 诊断 ---------------- */
+
+    /** 依次看异常链里有没有 SSL / 证书相关的类型 */
+    private static boolean isTlsError(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof javax.net.ssl.SSLException) return true;
+            String name = c.getClass().getName();
+            if (name.contains("SSLHandshake") || name.contains("CertPath") || name.contains("Certificate")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String describe(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        for (Throwable c = t; c != null && sb.length() < 300; c = c.getCause()) {
+            if (sb.length() > 0) sb.append(" <- ");
+            sb.append(c.getClass().getSimpleName());
+            String msg = c.getMessage();
+            if (msg != null && !msg.isBlank()) sb.append(": ").append(msg.length() > 90 ? msg.substring(0, 90) : msg);
+            if (c.getCause() == c) break;
+        }
+        return sb.toString();
+    }
+
+    private static String shortReason(Throwable t) {
+        Throwable root = t;
+        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+        String msg = root.getMessage();
+        String s = root.getClass().getSimpleName() + (msg == null ? "" : ": " + (msg.length() > 60 ? msg.substring(0, 60) : msg));
+        return s.length() > 90 ? s.substring(0, 90) : s;
+    }
+
+    /** 打通到微信服务器的链路检查（DNS → HTTPS） */
+    public java.util.Map<String, Object> diagnostics() {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        try {
+            java.net.InetAddress[] addrs = java.net.InetAddress.getAllByName("api.weixin.qq.com");
+            java.util.List<String> ips = new java.util.ArrayList<>();
+            for (java.net.InetAddress a : addrs) ips.add(a.getHostAddress());
+            out.put("dns", ips);
+        } catch (Exception e) {
+            out.put("dnsError", describe(e));
+        }
+        long t0 = System.currentTimeMillis();
+        try {
+            HttpRequest probe = HttpRequest.newBuilder(URI.create("https://api.weixin.qq.com/"))
+                    .timeout(Duration.ofSeconds(6))
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = http.send(probe, HttpResponse.BodyHandlers.ofString());
+            out.put("httpsStatus", resp.statusCode());
+        } catch (Exception e) {
+            out.put("httpsError", describe(e));
+            out.put("tlsFailure", isTlsError(e));
+        }
+        out.put("costMs", System.currentTimeMillis() - t0);
+        out.put("insecureTlsEnabled", insecureTls);
+        out.put("appidConfigured", configured());
+        return out;
     }
 
     private static String enc(String v) {

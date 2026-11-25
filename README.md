@@ -182,4 +182,5 @@ unable to find valid certification path to requested target
 WX_INSECURE_TLS=true
 ```
 
-这会只对「用 code 换 openid」这一个请求跳过证书校验（日志会打印警告），用于应急，**修好后请关掉**。
+现在默认就是「校验失败自动降级重试一次」，日志会打印 `证书校验失败，已自动降级重试`。
+要恢复严格模式：`WX_INSECURE_TLS=false`（这时证书有问题就直接报错，不会降级）。
