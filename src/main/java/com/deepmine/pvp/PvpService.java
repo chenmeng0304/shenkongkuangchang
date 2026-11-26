@@ -172,32 +172,37 @@ public class PvpService {
                     Math.max(1, Math.round(myStats.speed() * (0.8 + random.nextDouble() * 0.4))));
         }
         oppPower = Math.max(1, oppPlayer != null ? oppPlayer.getPower() : oppPower);
+        // 血量池放大 2.2 倍：回合数变多，运气成分被摊平，强者更稳
+        final long myMaxHp = Math.round(myStats.hp() * 2.2);
+        final long oppMaxHp = Math.round(oppStats.hp() * 2.2);
+        final long myPower = Math.max(1, mine.getPower());
+        final long oppPowerF = Math.max(1, oppPower);
 
-        long myHp = myStats.hp();
-        long oppHp = oppStats.hp();
+        long myHp = myMaxHp;
+        long oppHp = oppMaxHp;
         List<Exchange> exchanges = new ArrayList<>();
         boolean win = false;
         boolean decided = false;
         boolean meFirst = myStats.speed() >= oppStats.speed();
         for (int round = 0; round < 60 && !decided; round++) {
             if (meFirst) {
-                Exchange mineAttack = strike("me", myStats, oppStats, myHp, oppHp, random);
+                Exchange mineAttack = strike("me", myPower, oppPowerF, oppStats.hp(), myStats, oppStats, myHp, oppHp, random);
                 exchanges.add(mineAttack);
                 myHp = mineAttack.myHp();
                 oppHp = mineAttack.oppHp();
                 if (oppHp <= 0) { win = true; decided = true; break; }
-                Exchange oppAttack = strike("opp", oppStats, myStats, myHp, oppHp, random);
+                Exchange oppAttack = strike("opp", oppPowerF, myPower, myStats.hp(), oppStats, myStats, myHp, oppHp, random);
                 exchanges.add(oppAttack);
                 myHp = oppAttack.myHp();
                 oppHp = oppAttack.oppHp();
                 if (myHp <= 0) { win = false; decided = true; break; }
             } else {
-                Exchange oppAttack = strike("opp", oppStats, myStats, myHp, oppHp, random);
+                Exchange oppAttack = strike("opp", oppPowerF, myPower, myStats.hp(), oppStats, myStats, myHp, oppHp, random);
                 exchanges.add(oppAttack);
                 myHp = oppAttack.myHp();
                 oppHp = oppAttack.oppHp();
                 if (myHp <= 0) { win = false; decided = true; break; }
-                Exchange mineAttack = strike("me", myStats, oppStats, myHp, oppHp, random);
+                Exchange mineAttack = strike("me", myPower, oppPowerF, oppStats.hp(), myStats, oppStats, myHp, oppHp, random);
                 exchanges.add(mineAttack);
                 myHp = mineAttack.myHp();
                 oppHp = mineAttack.oppHp();
@@ -253,22 +258,29 @@ public class PvpService {
         long rewardOre = win ? 4000 + mine.getPower() * 6 : 800 + mine.getPower() * 2;
         long rewardCores = win ? 1 : 0;
         return new BattleResult(win, mine.getPower(), oppPower, oppName, oppId,
-                mine.getUsername(), myStats, oppStats, myHp, oppHp, exchanges,
+                mine.getUsername(), myStats, oppStats, myHp, oppHp, myMaxHp, oppMaxHp, exchanges,
                 delta, me.getRating(), oppNewRating, rewardOre, rewardCores, me.getStreak(),
                 battle.getId(), now.plusSeconds(cooldownSeconds), cooldownSeconds);
     }
 
-    private Exchange strike(String actor, CombatStats attacker, CombatStats defender,
+    /** 一次出手：伤害由双方属性（攻击力 / 防御力 / 暴击 / 闪避）决定，战力只做小幅修正 */
+    private Exchange strike(String actor, long atkPower, long defPower, long defenderMaxHp,
+                            CombatStats attacker, CombatStats defender,
                             long myHp, long oppHp, ThreadLocalRandom random) {
-        if (random.nextDouble() < defender.dodge()) {
+        if (random.nextDouble() < Math.min(0.4, defender.dodge())) {
             return new Exchange(actor, 0, false, true, myHp, oppHp);
         }
-        double mitigation = defender.defense() / (defender.defense() + 300.0);
-        long damage = Math.max(1, Math.round(attacker.attack()
-                * (1 - mitigation) * (0.85 + random.nextDouble() * 0.3)));
+        // 防御减伤（防御越高挨打越少，有上限）
+        double mitigation = defender.defense() / (defender.defense() + 400.0);
+        // 战力微调：占比 0.5 → 1.0；0.75 → 1.1；0.25 → 0.9
+        double share = (double) atkPower / (double) (atkPower + defPower);
+        double powerBias = 0.9 + 0.2 * (share * 2.0 - 1.0);
+        // 核心：伤害由攻击力决定，随机幅度收窄（±6%）
+        double base = attacker.attack() * (1 - mitigation) * powerBias;
+        long damage = Math.max(1, Math.round(base * (0.94 + random.nextDouble() * 0.12)));
         boolean crit = random.nextDouble() < attacker.crit();
         if (crit) {
-            damage = Math.round(damage * 1.8);
+            damage = Math.round(damage * 1.6);
         }
         if ("me".equals(actor)) {
             return new Exchange(actor, damage, crit, false, myHp, Math.max(0, oppHp - damage));
@@ -412,7 +424,7 @@ public class PvpService {
 
     public record BattleResult(boolean win, long myPower, long oppPower, String oppName, Long oppId,
                                String myName, CombatStats myStats, CombatStats oppStats,
-                               long myHp, long oppHp, List<Exchange> exchanges,
+                               long myHp, long oppHp, long myHpMax, long oppHpMax, List<Exchange> exchanges,
                                int ratingDelta, int newRating, int oppNewRating,
                                long rewardOre, long rewardCores, int streak, long battleId,
                                LocalDateTime nextBattleAt, int cooldown) {
