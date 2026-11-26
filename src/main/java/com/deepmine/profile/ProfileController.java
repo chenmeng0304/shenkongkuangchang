@@ -65,12 +65,14 @@ public class ProfileController {
                 pvp == null ? 0 : pvp.getWins(),
                 pvp == null ? 0 : pvp.getLosses(),
                 pvp == null ? 0 : pvp.getStreak(),
+                user.getNickname(), user.getAvatarUrl(),
                 user.getCreatedAt(), profile.getUpdatedAt());
     }
 
     public record MeDto(Long userId, String username, long power, long cores, int prestiges,
                         int facilities, CombatStats combat,
                         int rating, int wins, int losses, int streak,
+                        String nickname, String avatarUrl,
                         LocalDateTime createdAt, LocalDateTime updatedAt) {
     }
 }
