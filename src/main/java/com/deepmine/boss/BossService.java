@@ -46,8 +46,10 @@ public class BossService {
     private static final long BOSS_HP_PER_FACILITY = 6_000_000L;
     private static final Set<String> DEFENSE_IDS = Set.of("gatling", "cannon", "shield", "repair");
 
-    /** 防线建筑等级上限（与客户端 DEFENSE_MAX_LEVEL 一致，防止单点堆到离谱火力） */
-    private static final int DEFENSE_MAX_LEVEL = 30;
+    /** 每阶等级上限（与客户端一致：升满 10 级可进化） */
+    private static final int DEFENSE_MAX_LEVEL = 10;
+    /** 防线最多 4 阶（进化 3 次） */
+    private static final int DEFENSE_MAX_STAGE = 3;
 
     private final WorldBossRepository bossRepository;
     private final BossDamageRepository damageRepository;
@@ -126,13 +128,16 @@ public class BossService {
 
         Map<String, Integer> levels = new HashMap<>();
         Map<String, Long> hps = new HashMap<>();
+        Map<String, Integer> stages = new HashMap<>();
         if (request != null && request.turrets() != null) {
             for (String id : DEFENSE_IDS) {
                 TurretState state = request.turrets().get(id);
                 if (state == null) continue;
-                int level = Math.max(0, Math.min(DEFENSE_MAX_LEVEL, state.level()));
+                int stage = Math.max(0, Math.min(DEFENSE_MAX_STAGE, state.stage() == null ? 0 : state.stage()));
+                int level = Math.max(0, Math.min((stage + 1) * DEFENSE_MAX_LEVEL, state.level()));
                 if (level <= 0) continue;
-                long maxHp = defenseMaxHp(id, level);
+                long maxHp = defenseMaxHp(id, level, stage);
+                stages.put(id, stage);
                 long hp = Math.max(0, Math.min(maxHp, state.hp()));
                 levels.put(id, level);
                 hps.put(id, hp);
@@ -171,9 +176,10 @@ public class BossService {
             if (hps.getOrDefault(id, 0L) <= 0) continue;
             double damage = defenseDamage(id);
             if (damage <= 0) continue;
-            long maxHp = defenseMaxHp(id, level);
+            int stage = stages.getOrDefault(id, 0);
+            long maxHp = defenseMaxHp(id, level, stage);
             double ratio = maxHp > 0 ? Math.max(0, Math.min(1, hps.get(id) / (double) maxHp)) : 0;
-            raw += damage * level * (0.4 + 0.6 * ratio);
+            raw += damage * level * (0.4 + 0.6 * ratio) * (1 + 0.6 * stage);
         }
         boolean crit = random.nextDouble() < 0.1;
         if (raw <= 0) {
@@ -209,7 +215,7 @@ public class BossService {
             for (String id : DEFENSE_IDS) {
                 Integer level = levels.get(id);
                 if (level == null || level <= 0) continue;
-                long maxHp = defenseMaxHp(id, level);
+                long maxHp = defenseMaxHp(id, level, stages.getOrDefault(id, 0));
                 long hp = hps.getOrDefault(id, 0L);
                 long missing = maxHp - hp;
                 if (missing <= 0 || repairPool <= 0) continue;
@@ -357,7 +363,7 @@ public class BossService {
         return bossRepository.save(boss);
     }
 
-    private static long defenseMaxHp(String id, int level) {
+    private static long defenseMaxHp(String id, int level, int stage) {
         long baseHp = switch (id) {
             case "gatling" -> 8_000L;
             case "cannon" -> 14_000L;
@@ -365,7 +371,9 @@ public class BossService {
             case "repair" -> 8_000L;
             default -> 0L;
         };
-        return Math.round(baseHp * (1 + (level - 1) * 0.22));
+        double hp = baseHp * (1 + (level - 1) * 0.22);
+        // 每进化一阶，血量 +50%（与客户端 defenseMaxHp 保持一致）
+        return Math.round(hp * (1 + 0.5 * Math.max(0, Math.min(DEFENSE_MAX_STAGE, stage))));
     }
 
     private static long defenseDamage(String id) {
@@ -395,7 +403,7 @@ public class BossService {
                                List<Hit> hits, Map<String, Long> repaired) {
     }
 
-    public record TurretState(int level, long hp) {
+    public record TurretState(int level, long hp, Integer stage) {
     }
 
     public record AttackRequest(Map<String, TurretState> turrets) {
