@@ -50,8 +50,9 @@ COPY --from=build /app/app.jar /app/app.jar
 
 # 云托管「服务设置 → 端口」要填 80，与这里保持一致
 EXPOSE 80
+# 不用固定 -Xmx：容器内存小时固定堆会被 OOM kill（表现就是 80 端口 connection refused）
 ENV PORT=80 \
     TZ=Asia/Shanghai \
-    JAVA_OPTS="-Xms256m -Xmx1024m -XX:+UseG1GC -XX:MaxMetaspaceSize=256m"
+    JAVA_OPTS="-XX:MaxRAMPercentage=70 -XX:+UseG1GC -XX:MaxMetaspaceSize=256m -XX:+ExitOnOutOfMemoryError"
 
 CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

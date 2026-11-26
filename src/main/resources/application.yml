@@ -24,6 +24,9 @@ spring:
       initialization-fail-timeout: ${DB_INIT_TIMEOUT:60000}
   jpa:
     open-in-view: false
+    # 显式指定方言：否则 Hibernate 启动时要连数据库读元数据，连不上就直接退出
+    # （云端表现为 80 端口 connection refused，看不到真正原因）
+    database-platform: ${JPA_DIALECT:org.hibernate.dialect.MySQLDialect}
     hibernate:
       ddl-auto: none
     properties:
@@ -32,7 +35,8 @@ spring:
           time_zone: Asia/Shanghai
         format_sql: false
   flyway:
-    enabled: true
+    # 关掉 Spring 自带的 Flyway 自动迁移：改由 FlywayMigrator 手动跑，失败也继续启动
+    enabled: false
     baseline-on-migrate: true
     locations: classpath:db/migration
   jackson:
@@ -60,7 +64,11 @@ app:
     # 证书校验失败时自动降级重试一次（会打 WARN）；设成 false 恢复严格模式
     insecure-tls: ${WX_INSECURE_TLS:true}
 
+# 云托管排查用：把启动失败原因（Flyway / 连接池）完整打到 stdout
 logging:
   level:
     root: INFO
     com.deepmine: INFO
+    org.flywaydb: INFO
+    com.zaxxer.hikari: INFO
+    org.springframework.boot.web.embedded.tomcat: INFO

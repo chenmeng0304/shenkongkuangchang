@@ -5,6 +5,7 @@ spring:
     username: sa
     password:
   jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
     open-in-view: false
     hibernate:
       ddl-auto: create-drop
@@ -30,6 +31,9 @@ app:
   wx:
     # 测试里没有真实 AppSecret，只验证平台注入 X-WX-OPENID 的分支
     trust-openid-header: true
+  db:
+    # 测试用 H2，迁移脚本是 MySQL 语法，关掉自动迁移（表由 ddl-auto: create-drop 建）
+    auto-migrate: false
 
 logging:
   level:
