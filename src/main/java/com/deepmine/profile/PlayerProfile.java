@@ -48,6 +48,14 @@ public class PlayerProfile {
     @Column(name = "snapshot_json")
     private String snapshotJson;
 
+    /** 客户端完整存档（DM3 文本），定时上传 */
+    @Lob
+    @Column(name = "save_text")
+    private String saveText;
+
+    @Column(name = "save_at")
+    private LocalDateTime saveAt;
+
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
@@ -164,6 +172,22 @@ public class PlayerProfile {
 
     public void setSpeed(long speed) {
         this.speed = speed;
+    }
+
+    public String getSaveText() {
+        return saveText;
+    }
+
+    public void setSaveText(String saveText) {
+        this.saveText = saveText;
+    }
+
+    public LocalDateTime getSaveAt() {
+        return saveAt;
+    }
+
+    public void setSaveAt(LocalDateTime saveAt) {
+        this.saveAt = saveAt;
     }
 
     public CombatStats combat() {

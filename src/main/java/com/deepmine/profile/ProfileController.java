@@ -43,6 +43,22 @@ public class ProfileController {
         return build(user, profile, pvp);
     }
 
+    /** 上传完整存档（客户端每 60 秒调一次） */
+    @PostMapping("/save-text")
+    public ProfileService.SaveText putSaveText(@RequestAttribute("userId") Long userId,
+                                              @RequestBody(required = false) SaveTextBody body) {
+        return profileService.saveSaveText(userId, body == null ? null : body.save());
+    }
+
+    /** 下载完整存档（登录后本机为空时恢复） */
+    @GetMapping("/save-text")
+    public ProfileService.SaveText getSaveText(@RequestAttribute("userId") Long userId) {
+        return profileService.loadSaveText(userId);
+    }
+
+    public record SaveTextBody(String save) {
+    }
+
     @GetMapping("/snapshot")
     public Snapshot snapshot(@RequestAttribute("userId") Long userId) {
         User user = users.findById(userId)

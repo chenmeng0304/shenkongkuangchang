@@ -113,6 +113,30 @@ public class ProfileService {
         return profiles.save(p);
     }
 
+    /** 定时存档：把客户端完整存档写进数据库（超过 900KB 拒绝，防滥用） */
+    @Transactional
+    public SaveText saveSaveText(Long userId, String text) {
+        PlayerProfile profile = require(userId);
+        String body = text == null ? "" : text;
+        if (body.length() > 900_000) {
+            throw com.deepmine.common.ApiException.badRequest("存档过大");
+        }
+        profile.setSaveText(body);
+        profile.setSaveAt(java.time.LocalDateTime.now());
+        profile.setUpdatedAt(java.time.LocalDateTime.now());
+        profiles.save(profile);
+        return new SaveText(body, profile.getSaveAt());
+    }
+
+    @Transactional(readOnly = true)
+    public SaveText loadSaveText(Long userId) {
+        PlayerProfile profile = require(userId);
+        return new SaveText(profile.getSaveText(), profile.getSaveAt());
+    }
+
+    public record SaveText(String save, java.time.LocalDateTime at) {
+    }
+
     public static int totalFacilities(Snapshot s) {
         if (s.buildings() == null) {
             return 0;
