@@ -113,15 +113,15 @@ public class BossService {
         WorldBoss current = ensureBoss();
         LocalDateTime now = LocalDateTime.now();
         if (current.getEndsAt() != null && !now.isBefore(current.getEndsAt())) {
-            throw ApiException.conflict("本期世界Boss已到 30 分钟轮换时间，请刷新");
+            throw ApiException.conflict("本期世界Boss已到 24 小时轮换时间，请刷新");
         }
         if (current.isDead()) {
-            throw ApiException.conflict("本期世界Boss已被击破，30 分钟后自动刷新");
+            throw ApiException.conflict("本期世界Boss已被击破，20 分钟后刷新");
         }
         WorldBoss boss = bossRepository.findByIdForUpdate(current.getId())
                 .orElseThrow(() -> ApiException.conflict("世界Boss状态异常，请刷新"));
         if (boss.isDead()) {
-            throw ApiException.conflict("本期世界Boss已被击破，30 分钟后自动刷新");
+            throw ApiException.conflict("本期世界Boss已被击破，20 分钟后刷新");
         }
         PlayerProfile profile = profileRepository.findById(userId)
                 .orElseThrow(() -> ApiException.badRequest("请先同步一次游戏进度"));
@@ -235,6 +235,9 @@ public class BossService {
         if (killed) {
             boss.setStatus(WorldBoss.DEAD);
             boss.setKilledAt(now);
+            // 被击破后 20 分钟刷新下一只
+            boss.setEndsAt(now.plusMinutes(20));
+            boss.setRespawnAt(boss.getEndsAt());
             // 最后一击额外奖励（与伤害第一同款装备宝箱）
             boss.setLastHitUserId(userId);
         }
@@ -318,7 +321,7 @@ public class BossService {
         return null;
     }
 
-    /** 后台定时轮换：即使没有客户端请求，30 分钟到点也会关闭本期并生成下一位 */
+    /** 后台定时轮换：即使没有客户端请求，到点也会关闭本期并生成下一位 */
     @Transactional
     @Scheduled(initialDelayString = "${app.boss.rotate-initial-ms:30000}",
                fixedDelayString = "${app.boss.rotate-check-ms:15000}")
@@ -326,7 +329,7 @@ public class BossService {
         ensureBoss();
     }
 
-    /** 懒刷新：30 分钟一到就关闭本期并生成下一位，不关心剩余血量 */
+    /** 懒刷新：24 小时到点（或击破后 20 分钟）关闭本期并生成下一位，不关心剩余血量 */
     private synchronized WorldBoss ensureBoss() {
         WorldBoss latest = bossRepository.findTopByOrderByIdDesc().orElse(null);
         LocalDateTime now = LocalDateTime.now();
@@ -334,7 +337,7 @@ public class BossService {
             return spawnBoss(null, now);
         }
         if (latest.getEndsAt() == null) {
-            // 兼容旧数据：升级后从当前时刻起算完整 30 分钟
+            // 兼容旧数据：升级后从当前时刻起算完整周期
             latest.setEndsAt(now.plusSeconds(periodSeconds));
             latest.setRespawnAt(latest.getEndsAt());
             latest.setCycleIndex(Math.max(0, latest.getCycleIndex()));
