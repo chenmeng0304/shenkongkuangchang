@@ -48,6 +48,10 @@ public class WorldBoss {
     @Column(name = "cycle_index", nullable = false)
     private int cycleIndex;
 
+    /** 对 Boss 造成「最后一击」的玩家（额外奖励装备宝箱，与伤害第一一致） */
+    @Column(name = "last_hit_user_id")
+    private Long lastHitUserId;
+
     public WorldBoss() {
     }
 
@@ -141,6 +145,14 @@ public class WorldBoss {
 
     public void setEndsAt(LocalDateTime endsAt) {
         this.endsAt = endsAt;
+    }
+
+    public Long getLastHitUserId() {
+        return lastHitUserId;
+    }
+
+    public void setLastHitUserId(Long lastHitUserId) {
+        this.lastHitUserId = lastHitUserId;
     }
 
     public int getCycleIndex() {

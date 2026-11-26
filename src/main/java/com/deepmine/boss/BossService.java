@@ -185,7 +185,10 @@ public class BossService {
         if (raw <= 0) {
             throw ApiException.badRequest("没有可输出的炮塔，请先建造或修理机枪塔 / 榴弹炮");
         }
-        long damage = Math.max(1, Math.round(raw * (0.9 + random.nextDouble() * 0.2) * (crit ? 1.5 : 1)));
+        // 晶核强化：每 1 晶核 +1% 伤害（最多 50 个）
+        int boost = request == null || request.boost() == null ? 0 : Math.max(0, Math.min(50, request.boost()));
+        double boostMul = 1 + boost * 0.01;
+        long damage = Math.max(1, Math.round(raw * (0.9 + random.nextDouble() * 0.2) * (crit ? 1.5 : 1) * boostMul));
         damage = Math.min(damage, boss.getHp());
 
         int shieldLevel = levels.getOrDefault("shield", 0);
@@ -232,6 +235,8 @@ public class BossService {
         if (killed) {
             boss.setStatus(WorldBoss.DEAD);
             boss.setKilledAt(now);
+            // 最后一击额外奖励（与伤害第一同款装备宝箱）
+            boss.setLastHitUserId(userId);
         }
         bossRepository.save(boss);
 
@@ -292,9 +297,16 @@ public class BossService {
             if (share >= 0.10) materials.put("mithril", 1L + Math.round(share * 12));
         }
 
+        // 「最后一击」额外奖励：与伤害第一名同款装备宝箱（神话 60% / 传说 40%）
+        String bonusBlueprintQuality = null;
+        if (boss.getLastHitUserId() != null && boss.getLastHitUserId().equals(userId)) {
+            bonusBlueprintQuality = random.nextDouble() < 0.6 ? "mythic" : "legend";
+        }
+
         row.setRewarded(true);
         damageRepository.save(row);
-        return new ClaimResult(0, cores, share, boss.getLevel(), blueprintQuality, rank, boss.getName(), materials);
+        return new ClaimResult(0, cores, share, boss.getLevel(), blueprintQuality,
+                bonusBlueprintQuality, rank, boss.getName(), materials);
     }
 
     private Claimable claimable(Long userId, LocalDateTime now) {
@@ -406,13 +418,14 @@ public class BossService {
     public record TurretState(int level, long hp, Integer stage) {
     }
 
-    public record AttackRequest(Map<String, TurretState> turrets) {
+    public record AttackRequest(Map<String, TurretState> turrets, Integer boost) {
     }
 
     public record Hit(String id, long damage, long hpAfter, boolean destroyed) {
     }
 
     public record ClaimResult(long ore, long cores, double share, int level, String blueprintQuality,
+                              String bonusBlueprintQuality,
                               int rank, String bossName, Map<String, Long> materials) {
     }
 }
