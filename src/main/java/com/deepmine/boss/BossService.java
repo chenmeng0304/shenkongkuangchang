@@ -212,23 +212,6 @@ public class BossService {
         }
 
         Map<String, Long> repaired = new LinkedHashMap<>();
-        long repairPool = 800L * levels.getOrDefault("repair", 0);
-        if (hps.getOrDefault("repair", 0L) <= 0) repairPool = 0;
-        if (repairPool > 0) {
-            for (String id : DEFENSE_IDS) {
-                Integer level = levels.get(id);
-                if (level == null || level <= 0) continue;
-                long maxHp = defenseMaxHp(id, level, stages.getOrDefault(id, 0));
-                long hp = hps.getOrDefault(id, 0L);
-                long missing = maxHp - hp;
-                if (missing <= 0 || repairPool <= 0) continue;
-                long heal = Math.min(missing, repairPool);
-                hps.put(id, hp + heal);
-                repaired.put(id, hp + heal);
-                repairPool -= heal;
-            }
-        }
-
         boss.setHp(Math.max(0, boss.getHp() - damage));
         boss.setTotalDamage(boss.getTotalDamage() + damage);
         boolean killed = boss.getHp() <= 0;
@@ -395,6 +378,7 @@ public class BossService {
         return switch (id) {
             case "gatling" -> 9_000L;
             case "cannon" -> 30_000L;
+            case "repair" -> 52_000L;   // 等离子加农炮（沿用老 id 兼容存档）
             default -> 0L;
         };
     }
