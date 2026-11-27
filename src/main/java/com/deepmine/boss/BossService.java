@@ -43,6 +43,8 @@ public class BossService {
 
     /** 世界Boss 血量：原版 ×3000（v1.5 先 ×100，再 ×30），再乘每位 Boss 的系数 */
     private static final long BOSS_BASE_HP_MIN = 600_000_000L;
+    /** 全服设施总和每 1 点带来的血量（总和口径，故远小于单人口径） */
+    private static final double BOSS_HP_PER_TOTAL_FACILITY = 60_000d;
     private static final long BOSS_HP_PER_FACILITY = 6_000_000L;
     private static final Set<String> DEFENSE_IDS = Set.of("gatling", "cannon", "shield", "repair");
 
@@ -179,7 +181,8 @@ public class BossService {
             int stage = stages.getOrDefault(id, 0);
             long maxHp = defenseMaxHp(id, level, stage);
             double ratio = maxHp > 0 ? Math.max(0, Math.min(1, hps.get(id) / (double) maxHp)) : 0;
-            raw += damage * level * (0.4 + 0.6 * ratio) * (1 + 0.6 * stage);
+            // 设施等级超线性加成：等级越高提升越明显（Lv40 约为 Lv1 的 764 倍）
+            raw += damage * Math.pow(level, 1.8) * (0.35 + 0.65 * ratio) * (1 + 1.2 * stage);
         }
         boolean crit = random.nextDouble() < 0.1;
         if (raw <= 0) {
@@ -337,14 +340,12 @@ public class BossService {
     }
 
     private WorldBoss spawnBoss(WorldBoss previous, LocalDateTime now) {
-        int topFacilities = profileRepository.findTop20ByOrderByFacilitiesDesc().stream()
-                .mapToInt(PlayerProfile::getFacilities)
-                .max()
-                .orElse(0);
+        // 全服设施总和（所有玩家）× 每点系数
+        long totalFacilities = profileRepository.sumFacilities();
         int cycle = previous == null ? 0 : (previous.getCycleIndex() + 1) % BOSS_COUNT;
         int level = previous == null ? 1 : previous.getLevel() + 1;
         double factor = cycle >= 0 && cycle < BOSS_HP_FACTOR.length ? BOSS_HP_FACTOR[cycle] : 1.0;
-        long baseHp = Math.max(BOSS_BASE_HP_MIN, topFacilities * BOSS_HP_PER_FACILITY);
+        long baseHp = Math.max(BOSS_BASE_HP_MIN, Math.round(totalFacilities * BOSS_HP_PER_TOTAL_FACILITY));
         long maxHp = Math.max(1L, Math.round(baseHp * factor));
 
         WorldBoss boss = new WorldBoss();
